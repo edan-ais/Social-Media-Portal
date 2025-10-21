@@ -9,19 +9,15 @@ import clip
 
 app = FastAPI()
 
-UPLOAD_DIR = "uploads"
-ARCHIVE_DIR = "archive"
-OUTPUT_DIR = "output"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(ARCHIVE_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# --- Auto-create folders on startup ---
+for d in ["uploads", "archive", "output"]:
+    os.makedirs(d, exist_ok=True)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load("ViT-B/32", device=device)
 
 INSTAGRAM_WIDTH, INSTAGRAM_HEIGHT = 1080, 1920
 MAX_FRAMES_PER_VIDEO, MIN_CLIP_DURATION = 5, 0.5
-
 
 def get_image_embedding(frame):
     if frame.dtype == 'float64' or frame.max() <= 1.0:
@@ -31,7 +27,6 @@ def get_image_embedding(frame):
     image_input = preprocess(pil_image).unsqueeze(0).to(device)
     with torch.no_grad():
         return model.encode_image(image_input).squeeze(0)
-
 
 def get_clip_embedding(path, n_frames=MAX_FRAMES_PER_VIDEO):
     try:
@@ -44,24 +39,25 @@ def get_clip_embedding(path, n_frames=MAX_FRAMES_PER_VIDEO):
     except:
         return None
 
-
 @app.get("/")
 async def root():
     with open("static/index.html") as f:
         return HTMLResponse(f.read())
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
-    path = os.path.join(UPLOAD_DIR, file.filename)
+    path = os.path.join("uploads", file.filename)
     with open(path, "wb") as f:
         f.write(await file.read())
     return {"status": "uploaded", "filename": file.filename}
 
-
 @app.post("/process")
 async def process_videos():
-    files = [os.path.join(UPLOAD_DIR, f) for f in os.listdir(UPLOAD_DIR)]
+    files = [os.path.join("uploads", f) for f in os.listdir("uploads")]
     if not files:
         return {"error": "No files to process."}
 
@@ -77,7 +73,6 @@ async def process_videos():
         elif f.lower().endswith(image_exts):
             clip_data.append({"path": f, "type":"image"})
 
-    # Order videos by similarity
     vids = [c for c in clip_data if c["type"]=="video"]
     ordered = []
     if vids:
@@ -89,7 +84,6 @@ async def process_videos():
             current = vids.pop(next_idx)
             ordered.append(current)
 
-    # Prepare final clips
     clips = []
     for c in ordered:
         v = VideoFileClip(c["path"]).resize(height=INSTAGRAM_HEIGHT)
@@ -109,20 +103,18 @@ async def process_videos():
     if not clips:
         return {"error": "No usable clips."}
 
-    output_path = os.path.join(OUTPUT_DIR, f"montage_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
+    output_path = os.path.join("output", f"montage_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
     final = concatenate_videoclips(clips, method="compose")
     final.write_videofile(output_path, fps=30)
 
-    # Move used files to archive
     for f in files:
-        shutil.move(f, os.path.join(ARCHIVE_DIR, os.path.basename(f)))
+        shutil.move(f, os.path.join("archive", os.path.basename(f)))
 
     return {"status": "done", "output": output_path}
 
-
 @app.get("/output/{filename}")
 async def get_output(filename: str):
-    path = os.path.join(OUTPUT_DIR, filename)
+    path = os.path.join("output", filename)
     if not os.path.exists(path):
         return {"error": "File not found"}
     return FileResponse(path, media_type="video/mp4")
