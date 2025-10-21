@@ -1,3 +1,4 @@
+imageio-ffmpeg
 fastapi
 uvicorn
 moviepy
