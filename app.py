@@ -1,4 +1,4 @@
-import os, subprocess, shutil, uuid
+import os, subprocess, shutil, uuid, asyncio
 from datetime import datetime
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import FileResponse, HTMLResponse
@@ -8,12 +8,13 @@ import clip
 import cv2
 from PIL import Image
 import imageio_ffmpeg
+import httpx  # for GitHub Actions trigger
 
 # --- Folder setup ---
 for folder in ["uploads", "archive", "output"]:
     os.makedirs(folder, exist_ok=True)
 
-app = FastAPI()
+app = FastAPI(title="AI Montage Bot")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load("ViT-B/32", device=device)
@@ -21,6 +22,10 @@ model, preprocess = clip.load("ViT-B/32", device=device)
 INSTAGRAM_W, INSTAGRAM_H = 1080, 1920
 MAX_FRAMES_PER_VIDEO, MIN_CLIP_DURATION = 5, 0.5
 FFMPEG_BIN = imageio_ffmpeg.get_ffmpeg_exe()
+
+# --- GitHub Actions Settings ---
+GITHUB_REPO = os.getenv("GH_REPO", "edan-ais/Social-Media-Portal")
+GITHUB_TOKEN = os.getenv("GH_PAT")
 
 
 def get_image_embedding(frame_bgr):
@@ -86,6 +91,7 @@ async def ui():
     <input type="file" id="file" multiple/>
     <button onclick="upload()">Upload</button>
     <button onclick="process()">Create Montage</button>
+    <button onclick="trigger()">Trigger GitHub Actions</button>
     <p id="status"></p><video id="video" width="360" controls style="display:none;"></video>
     <script>
     async function upload(){
@@ -105,6 +111,12 @@ async def ui():
         const v=document.getElementById('video');
         v.src='/'+data.output;v.style.display='block';
       }else{document.getElementById('status').innerText=data.error||'Error';}
+    }
+    async function trigger(){
+      document.getElementById('status').innerText='Triggering GitHub Actions...';
+      const res=await fetch('/trigger',{method:'POST'});
+      const data=await res.json();
+      document.getElementById('status').innerText = JSON.stringify(data);
     }
     </script></body></html>
     """
@@ -190,3 +202,25 @@ async def get_output(filename: str):
     if not os.path.exists(path):
         return {"error": "File not found"}
     return FileResponse(path, media_type="video/mp4")
+
+
+# --- GitHub Actions Trigger Endpoint ---
+@app.post("/trigger")
+async def trigger_github_workflow():
+    """Trigger GitHub Actions montage workflow via API."""
+    if not GITHUB_TOKEN:
+        return {"error": "Missing GH_PAT environment variable"}
+
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/montage.yml/dispatches"
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json",
+    }
+    payload = {"ref": "main"}
+
+    async with httpx.AsyncClient() as client:
+        r = await client.post(url, headers=headers, json=payload)
+        if r.status_code in (200, 201, 204):
+            return {"status": "success", "message": "Workflow triggered!"}
+        else:
+            return {"status": "error", "code": r.status_code, "details": r.text}
