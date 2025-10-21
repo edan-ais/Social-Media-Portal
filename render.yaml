@@ -4,10 +4,7 @@ services:
     env: python
     plan: starter
     buildCommand: |
-      apt-get update && \
-      apt-get install -y ffmpeg && \
-      pip install --upgrade pip && \
-      pip install -r requirements.txt
+      pip install --upgrade pip && pip install -r requirements.txt
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
