@@ -10,3 +10,4 @@ Pillow
 imageio
 imageio-ffmpeg
 numpy
+httpx
