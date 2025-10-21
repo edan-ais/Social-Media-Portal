@@ -2,22 +2,34 @@ import os, subprocess, shutil, uuid, asyncio
 from datetime import datetime
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import FileResponse, HTMLResponse
-import torch
 import numpy as np
-import clip
-import cv2
 from PIL import Image
 import imageio_ffmpeg
 import httpx  # for GitHub Actions trigger
+
+# --- Try importing heavy dependencies safely ---
+MODEL_READY = False
+try:
+    import torch
+    import clip
+    import cv2
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model, preprocess = clip.load("ViT-B/32", device=device)
+    MODEL_READY = True
+    print("[INFO] CLIP model loaded successfully.")
+except Exception as e:
+    print(f"[WARN] Safe Mode: backend initialization failed ({e})")
+    torch = None
+    clip = None
+    cv2 = None
+    preprocess = None
 
 # --- Folder setup ---
 for folder in ["uploads", "archive", "output"]:
     os.makedirs(folder, exist_ok=True)
 
 app = FastAPI(title="AI Montage Bot")
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model, preprocess = clip.load("ViT-B/32", device=device)
 
 INSTAGRAM_W, INSTAGRAM_H = 1080, 1920
 MAX_FRAMES_PER_VIDEO, MIN_CLIP_DURATION = 5, 0.5
@@ -85,39 +97,47 @@ def ffmpeg_concat(files, output):
 
 @app.get("/")
 async def ui():
-    html = """
+    safe_banner = (
+        '<p style="color:red;font-weight:bold">'
+        '⚠️ Running in Safe Mode — backend processing temporarily unavailable.'
+        '</p>'
+        if not MODEL_READY else ""
+    )
+
+    html = f"""
     <!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;margin-top:40px">
     <h2>AI Montage Bot</h2>
+    {safe_banner}
     <input type="file" id="file" multiple/>
     <button onclick="upload()">Upload</button>
     <button onclick="process()">Create Montage</button>
     <button onclick="trigger()">Trigger GitHub Actions</button>
     <p id="status"></p><video id="video" width="360" controls style="display:none;"></video>
     <script>
-    async function upload(){
+    async function upload(){{
       const files=document.getElementById('file').files;
-      for(const f of files){
+      for(const f of files){{
         const fd=new FormData();fd.append('file',f);
-        await fetch('/upload',{method:'POST',body:fd});
-      }
+        await fetch('/upload',{{method:'POST',body:fd}});
+      }}
       document.getElementById('status').innerText='Uploaded.';
-    }
-    async function process(){
+    }}
+    async function process(){{
       document.getElementById('status').innerText='Processing...';
-      const res=await fetch('/process',{method:'POST'});
+      const res=await fetch('/process',{{method:'POST'}});
       const data=await res.json();
-      if(data.output){
+      if(data.output){{
         document.getElementById('status').innerText='Done!';
         const v=document.getElementById('video');
-        v.src='/'+data.output;v.style.display='block';
-      }else{document.getElementById('status').innerText=data.error||'Error';}
-    }
-    async function trigger(){
+        v.src='/' + data.output;v.style.display='block';
+      }}else{{document.getElementById('status').innerText=data.error||'Error';}}
+    }}
+    async function trigger(){{
       document.getElementById('status').innerText='Triggering GitHub Actions...';
-      const res=await fetch('/trigger',{method:'POST'});
+      const res=await fetch('/trigger',{{method:'POST'}});
       const data=await res.json();
-      document.getElementById('status').innerText = JSON.stringify(data);
-    }
+      document.getElementById('status').innerText=JSON.stringify(data);
+    }}
     </script></body></html>
     """
     return HTMLResponse(html)
@@ -125,7 +145,7 @@ async def ui():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "backend_ready": MODEL_READY}
 
 
 @app.post("/upload")
@@ -138,6 +158,8 @@ async def upload(file: UploadFile = File(...)):
 
 @app.post("/process")
 async def process_videos():
+    if not MODEL_READY:
+        return {"error": "Backend not loaded — running in Safe Mode (frontend still available)."}
     files = [os.path.join("uploads", f) for f in os.listdir("uploads")]
     if not files:
         return {"error": "No files uploaded."}
