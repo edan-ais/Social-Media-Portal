@@ -1,10 +1,14 @@
 services:
   - type: web
     name: ai-montage-bot
-    env: docker
+    env: python
     plan: starter
-    dockerfilePath: ./Dockerfile
-    autoDeploy: true
+    buildCommand: |
+      apt-get update && \
+      apt-get install -y ffmpeg && \
+      pip install --upgrade pip && \
+      pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: PYTHONUNBUFFERED
-        value: "1"
+      - key: PYTHON_VERSION
+        value: 3.10
