@@ -2,10 +2,13 @@ services:
   - type: web
     name: ai-montage-bot
     env: python
-    plan: starter
-    buildCommand: |
-      pip install --upgrade pip && pip install -r requirements.txt
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.14
+      - key: GH_REPO
+        value: edan-ais/Social-Media-Portal
+      - key: GH_PAT
+        sync: false
