@@ -1,0 +1,32 @@
+name: Build Montage
+on:
+  workflow_dispatch:
+
+jobs:
+  montage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          pip install --upgrade pip
+          pip install torch ftfy regex tqdm git+https://github.com/openai/CLIP.git opencv-python Pillow imageio imageio-ffmpeg numpy
+
+      - name: Run Montage Builder
+        run: |
+          python scripts/run_montage.py
+
+      - name: Upload result artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: montage-video
+          path: output/*.mp4
