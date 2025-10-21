@@ -5,26 +5,18 @@ on:
 jobs:
   build_montage:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: 3.10
-
       - name: Install dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y ffmpeg
-          pip install --upgrade pip
           pip install torch ftfy regex tqdm git+https://github.com/openai/CLIP.git opencv-python Pillow imageio imageio-ffmpeg numpy moviepy
-
       - name: Run montage processor
-        run: |
-          python backend/process_videos.py  # <- This is your heavy code moved here
-
+        run: python backend/process_videos.py
       - name: Upload output video
         uses: actions/upload-artifact@v4
         with:
