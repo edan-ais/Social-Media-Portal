@@ -1,13 +1,3 @@
 fastapi
 uvicorn
-torch
-ftfy
-regex
-tqdm
-git+https://github.com/openai/CLIP.git
-opencv-python
-Pillow
-imageio
-imageio-ffmpeg
-numpy
 httpx
